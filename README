@@ -1,0 +1,379 @@
+# ChantierPilot - Suivi pédagogique de plusieurs chantiers
+
+Version 1.0 - 22 octobre 2026
+
+Tableau de bord multichantier, quantités réalisées, planning, besoins en
+personnel, dépenses, journal de terrain, simulations de délais et apparence.
+Ouverture directe, sans page de connexion. Application pédagogique : elle
+ne valide ni une conformité réglementaire ni la sécurité d'un ouvrage.
+
+## 1. Organisation
+
+Le dossier livré contient seulement :
+- app.py : interface, calculs, style, images traitées en mémoire et exports.
+- requirement.text : bibliothèques à installer localement.
+- README : ce guide.
+
+Les données SQLite, images, tests, captures et archives sont hors de ce
+dossier. Aucun secret, clé API ou compte en ligne n'est intégré au code.
+
+## 2. Installation sous Windows avec VS Code
+
+Ouvrir le dossier chantierpilot dans VS Code, puis Terminal > Nouveau terminal.
+
+    python --version
+    python -m pip install -r requirement.text
+    python -m streamlit run app.py
+
+Ouvrir l'adresse Local URL indiquée. Sur cet ordinateur, la version préparée
+est lancée à http://localhost:8533/ si ce port est disponible. Un lien
+localhost n'est pas accessible depuis l'ordinateur du professeur.
+Pour limiter explicitement le serveur à cet ordinateur :
+
+    python -m streamlit run app.py --server.address 127.0.0.1 --theme.base light
+
+Ctrl+C arrête le serveur dans son terminal. Le registre local n'est pas effacé.
+Environnement vérifié : Python 3.14 et Streamlit 1.65. Les versions majeures
+des dépendances sont bornées ; un nouvel environnement doit être revérifié.
+
+| Bibliothèque | Usage |
+| --- | --- |
+| Streamlit | Saisies, boutons, navigation, images, téléchargements |
+| NumPy | Calendrier travaillé et tirages triangulaires reproductibles |
+| pandas | Tableaux et CSV |
+| Plotly | Gantt et graphiques interactifs des effectifs et finances |
+| NetworkX | Graphe de dépendances, détection des cycles, ordre topologique |
+| SciPy | Intervalles binomiaux et sensibilité par corrélation de rang |
+| Pillow | Validation et réduction des images JPEG/PNG |
+| ReportLab | Rapports PDF |
+| openpyxl | Classeur Excel à plusieurs feuilles |
+| tzdata | Fuseau Europe/Paris sous Windows pour la date courante |
+
+SQLite, JSON, UUID et les autres utilitaires viennent de Python standard.
+Les anneaux d'avancement sont réalisés en HTML/CSS dans app.py, pas Plotly.
+
+## 3. Deux espaces séparés
+
+Mes chantiers : données conservées localement dans le registre SQLite.
+Exemple fictif : données de la session, sans enregistrement dans le registre.
+Le bouton Charger les 3 chantiers fictifs remplace seulement le jeu fictif
+de la session. Il n'écrase pas les chantiers réels. Les modifications de
+l'apparence sont enregistrées dans l'espace sélectionné.
+
+Les exemples représentent Villa Horizon, Bloc scolaire et Drainage Campus.
+Leurs dates sont relatives à la date d'ouverture ; les données sont inventées.
+Les recharger réinitialise les modifications effectuées dans cet espace.
+
+## 4. Tableau de bord et chantiers
+
+Chaque chantier apparaît sous forme de vignette : anneau de progression,
+nom, localisation, état, dépenses et budget restant. Le bouton avec une
+icône de construction ouvre son détail. Il n'y a pas de liste déroulante
+pour choisir un chantier. Tous les chantiers ramène au portefeuille.
+
+Créer un chantier : nom, localisation, client, début, échéance, budget en
+FCFA entiers, capacité journalière, jours travaillés et dates exceptionnelles
+de repos. Les jours fériés ne sont pas devinés ; les ajouter si nécessaire.
+Une échéance ne peut pas précéder le début. Au moins un jour par semaine
+doit être travaillé. Limite : 50 chantiers et un horizon d'échéance de dix ans.
+
+Paramètres chantier permet de modifier ces données. L'archivage exige une
+confirmation et ne supprime pas les données. Inclure les archives les rend
+de nouveau visibles ; ouvrir un chantier archivé pour le restaurer.
+
+Etat affiché :
+- Sans tâches : aucun travail renseigné.
+- Terminé : toutes les tâches ont atteint leur quantité prévue.
+- En retard : une tâche incomplète dépasse sa fin prévue, ou l'échéance est
+  passée sans achèvement complet.
+- En cours : autre chantier actif comportant des tâches.
+- Archivé : chantier archivé explicitement.
+
+Ce classement ne représente ni une réception contractuelle ni une date
+réelle de fin. La date de réception n'est pas enregistrée dans cette version.
+
+## 5. Travaux, avancement et planning
+
+Une tâche contient : code unique dans le chantier, nom, début au plus tôt,
+durées optimiste/probable/pessimiste, quantité prévue/réalisée, unité,
+budget, effectif prévu, équipe, responsable et tâches précédentes.
+
+    avancement_tache = min(quantite_realisee / quantite_prevue, 1)
+
+Une quantité réalisée supérieure au prévu reste conservée et signalée ;
+l'anneau est plafonné à 100 %. Les quantités d'unités différentes ne sont
+jamais additionnées. Ce sont les derniers états saisis, pas un historique
+daté des mesures. Le journal ne modifie pas automatiquement ces quantités.
+
+Si tous les budgets de tâches sont strictement positifs :
+
+    avancement_chantier = somme(budget_tache * avancement_tache)
+                         / somme(budgets_taches)
+
+Sinon, toutes les tâches ont le même poids. La méthode est affichée dans
+la vue du chantier. Ce poids budgétaire est une convention pédagogique,
+pas une règle de rémunération ou une preuve de valeur réellement produite.
+
+Le planning utilise les durées probables et les jours travaillés du chantier.
+Un début prévu un jour de repos est reporté au prochain jour travaillé.
+Les dépendances sont fin-début : le successeur commence au plus tôt le
+prochain jour travaillé après ses prédécesseurs et sa propre date au plus tôt.
+Les boucles et prédécesseurs absents sont refusés. Les barres du Gantt
+couvrent une période calendaire ; les jours de repos internes ne sont pas
+comptés dans la durée travaillée. Maximum : 100 tâches et 5000 jours
+travaillés pour un planning calculé.
+
+Modifier une tâche : la sélectionner dans Travaux et planning, changer
+ses valeurs, puis Enregistrer la tâche. Changer un budget ou une durée
+ne crée ni dépense réelle ni présence observée.
+
+### Import CSV des tâches
+
+Ouvrir Importer ou exporter les tâches CSV et télécharger le modèle.
+Colonnes exactes :
+
+    code,name,start,duration,quantity,done,unit,budget,workers,team,responsible,optimistic,pessimistic,predecessors
+
+start : AAAA-MM-JJ ; duration : durée probable entière en jours travaillés.
+predecessors : codes séparés par |, pas les identifiants internes.
+unit : m³, m², m, u ou forfait. Les nombres sont sans séparateur de milliers.
+CSV UTF-8 avec virgule ou point-virgule ; virgule décimale acceptée pour
+quantity et done avec un séparateur point-virgule. Import : 2 Mo, 100 lignes.
+Un code déjà présent refuse tout le lot. Aucune mise à jour silencieuse.
+Les prédécesseurs peuvent désigner une tâche existante ou une autre ligne
+du même CSV. Prévisualiser, confirmer puis valider l'import.
+
+## 6. Effectifs
+
+Pour chaque tâche : journées-personnes = effectif prévu x durée travaillée.
+Pour chaque date : somme des effectifs des tâches prévues ce jour-là.
+Les repos et jours exceptionnels sont exclus. Le graphique superpose
+barres de besoin prévu et présence réellement enregistrée dans le journal.
+La ligne pointillée est la capacité journalière déclarée du chantier.
+
+Une présence absente du journal est inconnue, pas zéro. Une présence
+explicitement égale à zéro est une observation. Une seule fiche par date
+évite d'additionner plusieurs fois l'effectif total du chantier.
+
+Le total prévu additionne les BESOINS des tâches. Si la même équipe nommée
+est affectée à plusieurs tâches le même jour, un conflit est signalé.
+Sans noms d'équipes, l'application ne peut pas détecter un double comptage.
+Il n'existe pas d'affectation nominative ou de répartition automatique
+des salariés. Les surcharges ne sont pas résolues automatiquement.
+
+## 7. Finances
+
+Enregistrer ou modifier une dépense datée : catégorie, libellé, montant
+entier positif en FCFA et éventuelle tâche associée. Une dépense future
+est refusée, car cette rubrique suit des montants réellement dépensés.
+Une modification sélectionnée remplace l'entrée, sans la compter deux fois.
+Pas de calcul de TVA, paie, facturation, engagements ou comptabilité bancaire.
+
+    budget_restant = budget_chantier - somme(depenses_enregistrees)
+
+Un résultat négatif indique un dépassement. Ce n'est pas un solde bancaire.
+Le budget non affecté est budget_chantier - somme(budgets_taches).
+Une valeur négative révèle des budgets de tâches supérieurs à l'enveloppe.
+
+Courbe prévisionnelle : chaque budget de tâche est réparti uniformément
+sur ses jours travaillés planifiés. C'est une convention linéaire, pas une
+prévision de trésorerie ou un devis certifié. Une modification du planning
+recalcule cette référence : il n'existe pas de baseline budgétaire figée.
+La courbe réelle s'arrête à aujourd'hui et ne se prolonge pas artificiellement
+sur le futur. Un autre graphique répartit les dépenses par catégorie.
+Dépenser 55 % du budget ne signifie pas avoir réalisé 55 % des travaux.
+
+## 8. Journal et images
+
+Choisir une date, saisir l'effectif total réellement présent, les travaux,
+livraisons, difficultés/incidents et décisions. Une nouvelle saisie pour
+la même date modifie cette fiche au lieu de la dupliquer. Les photos sont
+facultatives ; Retirer la photo efface seulement celle de la fiche sélectionnée.
+Les vingt dernières fiches sont consultables à l'écran ; toute date existante
+peut être sélectionnée dans le formulaire pour la modifier.
+
+Les images JPEG/PNG sont limitées à 3 Mo et 20 millions de pixels à l'entrée.
+Elles sont redimensionnées à 1600 pixels de côté maximum, converties en JPEG,
+sans reprendre les métadonnées EXIF, et limitées à 1 Mo après traitement.
+Elles sont conservées dans la sauvegarde SQLite/JSON, jamais dans app.py.
+Maximum : 1000 dépenses et 1000 fiches par chantier ; sauvegarde totale12Mo.
+
+## 9. Délais et probabilités
+
+Les durées optimiste a, probable m et pessimiste b satisfont :
+
+    1 <= a <= m <= b <= 730 jours travailles
+
+Chaque durée complète est tirée avec NumPy selon une loi triangulaire.
+Si a=m=b, elle est déterministe. Les durées des tâches sont supposées
+indépendantes ; aucune loi météo commune n'est modélisée.
+
+    duree_restante = plafond(duree_tiree * (1 - avancement_tache))
+
+Une tâche non terminée garde au moins un jour ; une tâche terminée est
+retirée du travail restant. Le départ de simulation est aujourd'hui,
+reporté au prochain jour travaillé si nécessaire. Les dates au plus tôt
+et liens fin-début restent respectés. Les quantités réalisées sont supposées
+représenter linéairement la fraction de travail accompli : hypothèse à discuter.
+
+Entre 1000 et 50000 tirages, graine réglable. Résultats : probabilité de
+finir avant ou le jour de l'échéance, date médiane P50, date P90, intervalle
+binomial exact à 95 % pour la seule erreur Monte-Carlo, histogramme et
+sensibilité par corrélation de rang. Une corrélation n'est pas une causalité.
+Zéro succès ne prouve pas une probabilité exactement nulle ; l'intervalle
+reste affiché. Une fois toutes les tâches terminées, pas de simulation
+de fin fictive : la date réelle d'achèvement n'est pas connue du modèle.
+
+RESSOURCES SUPPOSEES DISPONIBLES : cette simulation ne nivelle pas les
+équipes, même si Effectifs signale une surcharge. Les probabilités ne sont
+ni des garanties de délai ni une validation contractuelle.
+
+## 10. Arrière-plan personnalisable
+
+Apparence : palette prédéfinie ou couleur personnelle, image facultative,
+visibilité de l'image, retrait de l'image et rétablissement initial.
+Appliquer l'apparence enregistre le choix dans l'espace sélectionné.
+Les formulaires et graphiques conservent des surfaces lisibles. Une image
+peu chargée convient mieux qu'une capture d'écran remplie de texte.
+Les images appartiennent aux données, hors du dossier à trois fichiers.
+
+## 11. Exports et sauvegardes
+
+- CSV : tâches, effectifs, dépenses et simulations depuis leurs rubriques.
+- PDF : situation, planning, dépenses par catégorie et dix dernières
+  observations ; pas de photos ni de tirages inclus.
+- Excel : cinq feuilles Taches, Effectifs, Finances, Depenses, Journal.
+- JSON : tous les chantiers de l'espace, images et apparence incluses.
+
+Les rapports préparés sont masqués après un changement incompatible de
+données ou de date. Préparer de nouveau le rapport après une modification.
+Les CSV/Excel préfixent une apostrophe aux chaînes susceptibles de devenir
+des formules dans un tableur. Cette protection peut rester visible après
+réimportation ; vérifier les noms et codes. JSON conserve les chaînes exactes.
+
+Importer une sauvegarde AJOUTE ses chantiers avec de nouveaux identifiants,
+sans écraser ceux présents. Les dépendances sont remappées et l'origine
+fictive est conservée dans le libellé d'import. L'apparence existante n'est
+pas remplacée par l'import. Importer deux fois crée deux ensembles distincts :
+contrôler l'aperçu et la destination avant de confirmer.
+
+### Emplacement de la base locale
+
+Par défaut :
+
+    %USERPROFILE%\Documents\Codex\data\chantierpilot\chantierpilot.sqlite3
+
+Le dossier est créé au premier lancement. CHANTIERPILOT_DATA_DIR permet
+de choisir un autre dossier externe. Ne pas le placer dans le dossier livré.
+Les enregistrements sont transactionnels ; un numéro de révision refuse
+un écrasement silencieux si une autre session a modifié les données.
+Recharger avant de réessayer en cas de conflit. Pas d'historique d'audit,
+de chiffrement applicatif ou de sauvegarde automatique dans cette version.
+Exporter régulièrement le JSON ; conserver une copie privée externe.
+
+ATTENTION HEBERGEMENT : Streamlit Community Cloud n'offre pas ici un disque
+SQLite durable garanti. Le fichier peut être perdu lors d'une reconstruction
+ou d'un redéploiement. Un JSON exporté permet une réimportation additive ;
+pour un usage partagé réel et durable, une base externe devra être ajoutée.
+Cette version n'est pas connectée à Neon et ne réutilise pas la base BétonLab.
+Sans comptes utilisateurs, les visiteurs d'un même serveur partagent le registre.
+Ne pas y mettre de données confidentielles sur une application publique.
+
+## 12. Tests simples à reproduire
+
+A. Après chargement des trois exemples :
+- Trois vignettes ; budget total6 700 000 FCFA ; dépenses1 125 000 FCFA.
+- Villa Horizon : avancement33,3333 %, dépenses375 000, restant1 625 000 FCFA.
+- Effectifs de Villa Horizon : charge61 journées-personnes, pic5 personnes.
+Les dates et états de retard dépendent de la date courante.
+
+B. Créer un chantier fictif de contrôle, budget200 000 FCFA. Une seule tâche :
+100m³ prévus, 40m³ réalisés, budget200 000. Avancement40 %.
+Enregistrer une dépense110 000 : restant90 000, consommation55 %.
+Ne pas confondre les deux pourcentages.
+
+C. Effectifs : départ lundi2026-01-05, semaine lundi-vendredi, aucun repos
+exceptionnel. Tâche A : 5jours, 3personnes. B : début mercredi2026-01-07,
+3jours, 2personnes, SANS prédécesseur. Besoins3,3,5,5,5 ; charge21
+journées-personnes. Même nom d'équipe sur A et B : trois jours de conflit.
+
+D. Délais : A2jours puis B3jours, toutes les durées a=m=b, quantités réalisées0.
+Départ un lundi sans repos exceptionnel : fin vendredi. Ce résultat a été
+vérifié par un test automatisé daté2026-01-05. L'interface simule depuis
+AUJOURD'HUI, pas cette date passée ; adapter l'échéance au calendrier actuel.
+Ajouter un jour non travaillé dans la période doit repousser la fin.
+
+E. Journal : enregistrer une journée avec6personnes et une image de test.
+Le tableau des présences contient6 à cette date. Modifier la même fiche
+à4 : une seule fiche, présence4. Sans fiche, la présence reste inconnue.
+
+F. Modifier l'apparence puis naviguer : le choix demeure dans cet espace.
+Revenir à Mes chantiers : les essais fictifs n'y sont pas copiés.
+Exporter PDF/Excel/JSON ; importer le JSON dans l'espace fictif ajoute les
+chantiers sans supprimer les existants. Vérifier les compteurs.
+
+## 13. GitHub et Streamlit Community Cloud
+
+Le dossier local garde requirement.text. Community Cloud attend le manifeste
+standard requirements.txt. Préparer une COPIE distincte pour déployer :
+
+    New-Item -ItemType Directory -Path ..\chantierpilot-deploiement
+    Copy-Item app.py ..\chantierpilot-deploiement\app.py
+    Copy-Item README ..\chantierpilot-deploiement\README
+    Copy-Item requirement.text ..\chantierpilot-deploiement\requirements.txt
+
+Dans cette copie, l'installation utilise requirements.txt. Publier ces trois
+fichiers dans un nouveau dépôt GitHub, sans la base, les photos ou sauvegardes.
+Nom de dépôt proposé : chantierpilot (pas créé automatiquement).
+Depuis la copie de déploiement dans VS Code :
+
+    git init
+    git add app.py requirements.txt README
+    git commit -m "Premiere version de ChantierPilot"
+    git branch -M main
+    git remote add origin https://github.com/gc7258728-cmyk/chantierpilot.git
+    git remote -v
+    git push -u origin main
+
+Créer le dépôt vide correspondant avant l'envoi. Si origin existe, vérifier
+sa cible ; ne pas modifier celle d'une autre application. Sur Community
+Cloud, sélectionner le dépôt, branche main et fichier app.py. Paste URL
+attend un lien vers le fichier, par exemple, après publication :
+
+    https://github.com/gc7258728-cmyk/chantierpilot/blob/main/app.py
+
+Ne pas confondre le déploiement de l'interface et la conservation durable
+des données : voir les limites SQLite ci-dessus. Aucun déploiement public
+ou dépôt distant n'a été créé pendant cette livraison.
+
+Après modification : tester localement, reporter vers la copie déployée,
+puis git status, git add app.py requirements.txt README, git commit -m
+"Mise a jour ChantierPilot" et git push. Vérifier les logs Cloud.
+
+## 14. Vérification et limites
+
+Tests automatisés : avancement, pondérations, calendrier, dépendances,
+effectifs, conflits d'équipes, finances, simulations déterministes et
+reproductibles, validation, CSV, sauvegardes, images, SQLite et navigation.
+40 tests automatisés réussis, dont un test de formulaire devenu obsolète
+après modification depuis une autre session. Les 40 tests terminent avec OK ;
+Windows peut ensuite produire un avertissement de nettoyage d'un dossier
+temporaire du framework de test, sans échec de l'application.
+Recette navigateur sur 1440, 768, 390 et 320 pixels : vignettes, navigation,
+Gantt, effectifs, finances, ajout d'une dépense, journal avec image,
+simulation, PDF/Excel/CSV/JSON, arrière-plan, création de chantier/tâche,
+fusion de sauvegardes et séparation de l'espace réel. Exports téléchargés
+et vérifiés ; rapport PDF rendu puis inspecté. Les tableaux larges gardent
+un défilement interne. Le registre réel est resté vide pendant les tests.
+Les fichiers de test, données de vérification et captures restent hors projet.
+
+Limites : pas de paie, inventaire détaillé de stock, identité des salariés,
+permissions par utilisateur, budget de référence figé, historique daté des
+quantités, optimisation des ressources, météo corrélée ou conformité légale.
+Les écrans et calculs sont des outils pédagogiques, pas des certifications.
+
+Références techniques officielles :
+- https://networkx.org/documentation/stable/reference/algorithms/dag.html
+- https://numpy.org/doc/stable/reference/generated/numpy.busday_offset.html
+- https://numpy.org/doc/stable/reference/random/generated/numpy.random.Generator.triangular.html
+- https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/app-dependencies
