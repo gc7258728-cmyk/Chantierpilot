@@ -32,7 +32,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
-VERSION='1.0'
+VERSION='1.1'
 YELLOW, INK, BLUE, GREEN, ROSE='#F0CA45','#25282B','#285DB0','#237655','#AE345D'
 CATEGORIES=['Matériaux','Main-d’œuvre','Transport','Location','Autres']
 UNITS=['m³','m²','m','u','forfait']
@@ -592,12 +592,69 @@ def tasks_page(data,revision,p):
     st.caption('Liens fin-début : la tâche suivante commence au prochain jour travaillé après la fin des prédécesseurs. Les jours non travaillés sont reportés en avant. Modifier les quantités met à jour l’avancement, pas les dépenses.')
 
 
-def workforce_page(p):
+def update_staffing(p,task_id,workers,team,responsible,capacity):
+    q=copy.deepcopy(p)
+    q['capacity']=num(capacity,'Capacité journalière',0,10000,True)
+    if task_id is None and not q['tasks']:return q
+    task=next((t for t in q['tasks'] if t['id']==task_id),None)
+    if task is None:raise ValueError('Tâche introuvable. Sélectionner une tâche du chantier.')
+    task.update(workers=num(workers,'Effectif prévu',0,10000,True),
+        team=text(team,'Équipe',80,True),responsible=text(responsible,'Responsable',80,True))
+    return q
+
+
+def update_attendance(p,day,workers):
+    day=iso(day)
+    if day>today():raise ValueError('Une présence réelle ne peut pas être enregistrée à une date future.')
+    workers=num(workers,'Présence réelle',0,10000,True)
+    q=copy.deepcopy(p)
+    entry=next((j for j in q['journal'] if j['date']==str(day)),None)
+    if entry is None:
+        entry=dict(id=uid(),date=str(day),workers=workers,note='',delivery='',incident='',decision='',photo='')
+        q['journal'].append(entry)
+    else:entry['workers']=workers
+    return q
+
+
+def workforce_page(data,revision,p):
     st.header('Effectifs et durée des tâches');frame=workforce(p)
-    if frame.empty:note('Aucune tâche ou journée renseignée.');return
-    conflicts=frame[frame['conflits_équipes']!=''];planned=sum(t['workers']*t['duration'] for t in p['tasks'])
-    kpis([('Charge prévue',nfmt(planned),'Journées-personnes'),('Pic de besoin',nfmt(frame['prévu'].max()),'Personnes prévues simultanément'),
+    planned=sum(t['workers']*t['duration'] for t in p['tasks'])
+    kpis([('Charge prévue',nfmt(planned),'Journées-personnes'),('Pic de besoin',nfmt(frame['prévu'].max() if not frame.empty else 0),'Personnes prévues simultanément'),
         ('Capacité journalière',str(p['capacity']),'Personnes disponibles déclarées'),('Jours en surcharge',str(int((frame['prévu']>p['capacity']).sum())),'Besoin supérieur à la capacité')])
+    context=st.session_state.workspace+'_'+p['id']
+    stamp=context+'_'+str(revision)+'_'+signature(p)[:16]
+    left,right=st.columns(2)
+    with left:
+        st.subheader('Modifier les effectifs prévus')
+        task=None
+        if p['tasks']:
+            labels={t['id']:t['code']+' · '+t['name'] for t in p['tasks']}
+            chosen=st.selectbox('Tâche concernée',list(labels),format_func=labels.get,key='staff_task_'+context)
+            task=next(t for t in p['tasks'] if t['id']==chosen)
+        with st.form('staff_plan_'+stamp+'_'+(task['id'] if task else 'capacity')):
+            capacity=st.number_input('Capacité disponible par jour (personnes)',0,10000,p['capacity'],1)
+            if task:
+                workers=st.number_input('Effectif prévu pour cette tâche (personnes)',0,10000,task['workers'],1)
+                team=st.text_input('Équipe',task['team'],max_chars=80)
+                responsible=st.text_input('Responsable de l’équipe',task['responsible'],max_chars=80)
+            save_plan=st.form_submit_button('Enregistrer les effectifs prévus',icon=':material/save:',type='primary',width='stretch')
+        if save_plan:
+            q=update_staffing(p,task['id'] if task else None,workers if task else None,team if task else '',responsible if task else '',capacity)
+            commit(replace_project(data,q),revision,'Effectifs prévus et capacité enregistrés.')
+    with right:
+        st.subheader('Présence réelle par journée')
+        day=st.date_input('Date de présence',today(),min_value=date(2000,1,1),max_value=today(),key='staff_day_'+context)
+        if day is not None:
+            entry=next((j for j in p['journal'] if j['date']==str(day)),None)
+            with st.form('staff_actual_'+stamp+'_'+str(day)):
+                actual=st.number_input('Personnes réellement présentes',0,10000,entry['workers'] if entry else None,1,placeholder='Effectif du jour')
+                save_actual=st.form_submit_button('Enregistrer la présence',icon=':material/save:',type='primary',width='stretch')
+            if save_actual:
+                q=update_attendance(p,day,actual)
+                commit(replace_project(data,q),revision,'Présence enregistrée. Le journal de chantier est également à jour.')
+    st.subheader('Évolution des effectifs')
+    if frame.empty:note('Aucune tâche ou journée renseignée.');return
+    conflicts=frame[frame['conflits_équipes']!='']
     fig=go.Figure(go.Bar(x=frame['date'],y=frame['prévu'],name='Besoin prévu',marker_color=BLUE))
     fig.add_trace(go.Scatter(x=frame['date'],y=frame['présent'],mode='lines+markers',connectgaps=False,name='Présence observée',line=dict(color=GREEN,width=3)))
     fig.add_hline(y=p['capacity'],line_dash='dash',line_color=ROSE);fig.update_layout(xaxis_title='Date',yaxis_title='Personnes');plot(fig,'effectifs_journaliers')
@@ -791,7 +848,7 @@ def main():
         elif not p:note('Aucun chantier sélectionné dans cet espace.');dashboard(data,revision)
         elif page=='Vue chantier':site_overview(p)
         elif page=='Travaux et planning':tasks_page(data,revision,p)
-        elif page=='Effectifs':workforce_page(p)
+        elif page=='Effectifs':workforce_page(data,revision,p)
         elif page=='Finances':finance_page(data,revision,p)
         elif page=='Journal':journal_page(data,revision,p)
         elif page=='Délais et probabilités':risk_page(p)
