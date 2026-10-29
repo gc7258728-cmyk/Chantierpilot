@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ChantierPilot - suivi multichantier pédagogique, données hors du dossier source."""
+"""G.C.S APP - suivi multichantier pédagogique, données hors du dossier source."""
 from __future__ import annotations
 
 import base64
@@ -129,7 +129,7 @@ def schedule(p):
 
 
 def validate(data):
-    if not isinstance(data,dict) or data.get('version')!=1:raise ValueError('Sauvegarde ChantierPilot version 1 attendue.')
+    if not isinstance(data,dict) or data.get('version')!=1:raise ValueError('Sauvegarde G.C.S APP version 1 attendue.')
     d=copy.deepcopy(data);projects=d.get('projects')
     if not isinstance(projects,list) or len(projects)>50:raise ValueError('Maximum 50 chantiers.')
     seen=set()
@@ -354,7 +354,7 @@ def excel_bytes(p):
 def pdf_report(p):
     out=io.BytesIO();styles=getSampleStyleSheet();styles['BodyText'].fontSize=10;styles['BodyText'].leading=14;styles['Heading2'].keepWithNext=True
     P=lambda s:Paragraph(escape(str(s)),styles['BodyText'])
-    d=summary(p);story=[Paragraph('ChantierPilot',styles['Title']),P('Rapport de suivi · '+p['name']),P(p['location']),
+    d=summary(p);story=[Paragraph('G.C.S APP',styles['Title']),P('Rapport de suivi · '+p['name']),P(p['location']),
         P('Situation au '+str(today())+' · '+p['origin']),Spacer(1,12)]
     def table(headers,rows,widths):
         t=Table([[P(x) for x in headers]]+[[P(x) for x in r] for r in rows],colWidths=widths,repeatRows=1,hAlign='LEFT')
@@ -372,7 +372,7 @@ def pdf_report(p):
     for j in sorted(p['journal'],key=lambda x:x['date'],reverse=True)[:10]:
         story.extend([P(j['date']+' · '+str(j['workers'])+' personnes présentes'),P(j['note']),P('Incident : '+j['incident']),P('Décision : '+j['decision']),Spacer(1,8)])
     story.extend([P('Les photos, les tirages et les scénarios probabilistes ne sont pas inclus dans ce rapport. Le prévisionnel financier répartit uniformément les budgets des tâches sur leurs jours travaillés ; ce n’est ni un solde bancaire ni une prévision certifiée de trésorerie.'),P('Suivi pédagogique : aucun contrôle réglementaire, aucune validation de sécurité ou de conformité. Avancement : dernier état saisi, non reconstitution historique.')])
-    def footer(c,doc):c.setFont('Helvetica',8);c.drawString(48,23,'ChantierPilot · Rapport pédagogique');c.drawRightString(A4[0]-48,23,str(doc.page))
+    def footer(c,doc):c.setFont('Helvetica',8);c.drawString(48,23,'G.C.S APP · Rapport pédagogique');c.drawRightString(A4[0]-48,23,str(doc.page))
     SimpleDocTemplate(out,pagesize=A4,leftMargin=48,rightMargin=48,topMargin=40,bottomMargin=44).build(story,onFirstPage=footer,onLaterPages=footer)
     return out.getvalue()
 
@@ -581,7 +581,7 @@ def tasks_page(data,revision,p):
         commit(replace_project(data,q),revision,'Tâche enregistrée.')
     with st.expander('Importer ou exporter les tâches CSV'):
         template=task_csv(p) if p['tasks'] else task_csv({**p,'tasks':[{**blank_task(p),'name':'Tâche exemple fictif'}]})
-        st.download_button('Modèle / tâches CSV',csv_bytes(template),'chantierpilot-taches.csv','text/csv',icon=':material/download:')
+        st.download_button('Modèle / tâches CSV',csv_bytes(template),'gcs-app-taches.csv','text/csv',icon=':material/download:')
         uploaded=st.file_uploader('Importer des tâches CSV',type='csv',max_upload_size=2,key='tasks_csv_'+p['id'])
         if uploaded:
             try:
@@ -662,7 +662,7 @@ def workforce_page(data,revision,p):
     st.subheader('Charge par tâche')
     if p['tasks']:st.dataframe(task_frame(p)[['Code','Tâche','Début','Fin','Durée','Effectif','Équipe','Journées_personnes']],hide_index=True,width='stretch',alt='Effectifs, durée travaillée et journées-personnes par tâche')
     st.dataframe(frame,hide_index=True,width='stretch',alt='Besoin quotidien, présence observée et conflits d’équipes')
-    st.download_button('Exporter les effectifs CSV',csv_bytes(frame),'chantierpilot-effectifs.csv','text/csv',icon=':material/download:')
+    st.download_button('Exporter les effectifs CSV',csv_bytes(frame),'gcs-app-effectifs.csv','text/csv',icon=':material/download:')
     st.caption('Charge = effectif × durée travaillée. Une date sans fiche journal a une présence inconnue, pas zéro. Les tâches superposées additionnent leurs besoins ; aucune affectation nominative ni optimisation de ressources n’est effectuée.')
 
 
@@ -691,7 +691,7 @@ def finance_page(data,revision,p):
         e.update(date=str(day),category=category,label=label,amount=amount,task_id=task);q=copy.deepcopy(p);q['expenses']=[x for x in q['expenses'] if x['id']!=e['id']]+[e]
         commit(replace_project(data,q),revision,'Dépense enregistrée.')
     if p['expenses']:st.dataframe(pd.DataFrame(p['expenses']).drop(columns=['id','task_id']),hide_index=True,width='stretch',alt='Dépenses enregistrées du chantier')
-    st.download_button('Exporter les dépenses CSV',csv_bytes(pd.DataFrame(p['expenses']).drop(columns=['id','task_id'],errors='ignore')),'chantierpilot-depenses.csv','text/csv',icon=':material/download:')
+    st.download_button('Exporter les dépenses CSV',csv_bytes(pd.DataFrame(p['expenses']).drop(columns=['id','task_id'],errors='ignore')),'gcs-app-depenses.csv','text/csv',icon=':material/download:')
     if r['remaining']<0:note('Dépassement du budget initial : '+money(-r['remaining'])+'.',True)
 
 
@@ -743,7 +743,7 @@ def risk_page(p):
         fig.update_layout(xaxis_title='Date de fin simulée',yaxis_title='Nombre de tirages');plot(fig,'distribution_des_dates_de_fin')
         if r['sensitivity']:
             sf=pd.DataFrame(r['sensitivity'][:8]);fig=go.Figure(go.Bar(x=sf['corrélation'],y=sf['tâche'],orientation='h',marker_color=GREEN));fig.update_layout(xaxis_title='Corrélation de rang avec la fin',yaxis_autorange='reversed');plot(fig,'sensibilite_des_durees')
-        st.download_button('Exporter les simulations CSV',csv_bytes(pd.DataFrame({'fin_simulée':r['dates'],'jours_travaillés_restants':r['finish']})),'chantierpilot-simulations.csv','text/csv',icon=':material/download:')
+        st.download_button('Exporter les simulations CSV',csv_bytes(pd.DataFrame({'fin_simulée':r['dates'],'jours_travaillés_restants':r['finish']})),'gcs-app-simulations.csv','text/csv',icon=':material/download:')
         st.caption(f'{r["count"]} tirages · graine {r["seed"]} · situation au {r["reference"]}. Corrélation descriptive, pas preuve de causalité.')
     note('Modèle pédagogique : lois triangulaires indépendantes entre durées optimiste, probable et pessimiste. Durée restante = durée tirée × fraction non réalisée, arrondie au jour travaillé supérieur. Les tâches terminées ne sont plus simulées. Liens fin-début et calendrier sont respectés ; ressources supposées disponibles, sans nivellement, météo commune ni validation contractuelle.',True)
 
@@ -780,17 +780,17 @@ def exports_page(data,revision,p):
     st.header('Rapports et sauvegardes')
     if p:
         st.subheader(p['name'])
-        sig=signature(p)+str(today())
+        sig=signature(p)+str(today())+'|gcs-app'
         if st.button('Préparer le rapport PDF et Excel',type='primary',icon=':material/picture_as_pdf:'):
             st.session_state.reports=(sig,pdf_report(p),excel_bytes(p))
         saved=st.session_state.get('reports')
         if saved and saved[0]==sig:
             with st.container(horizontal=True):
-                st.download_button('Rapport PDF',saved[1],'chantierpilot-rapport.pdf','application/pdf',icon=':material/download:')
-                st.download_button('Classeur Excel',saved[2],'chantierpilot-suivi.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',icon=':material/download:')
+                st.download_button('Rapport PDF',saved[1],'gcs-app-rapport.pdf','application/pdf',icon=':material/download:')
+                st.download_button('Classeur Excel',saved[2],'gcs-app-suivi.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',icon=':material/download:')
         st.caption('Rapport : situation, tâches, finances et dix dernières observations. Photos et tirages non inclus. Excel : tâches, effectifs, courbe financière, dépenses et journal.')
     st.subheader('Sauvegarde de l’espace sélectionné')
-    st.download_button('Sauvegarde complète JSON',json.dumps(data,ensure_ascii=False,indent=2).encode('utf-8'),'chantierpilot-sauvegarde.json','application/json',icon=':material/save:')
+    st.download_button('Sauvegarde complète JSON',json.dumps(data,ensure_ascii=False,indent=2).encode('utf-8'),'gcs-app-sauvegarde.json','application/json',icon=':material/save:')
     uploaded=st.file_uploader('Importer une sauvegarde JSON',type='json',max_upload_size=12,key='backup_file')
     if uploaded:
         try:
@@ -807,7 +807,7 @@ def exports_page(data,revision,p):
 
 
 def main():
-    st.set_page_config(page_title='ChantierPilot · Suivi de chantier',page_icon=':material/construction:',layout='wide')
+    st.set_page_config(page_title='G.C.S APP · Suivi de chantier',page_icon=':material/construction:',layout='wide')
     for key,value in dict(page='Tableau de bord',workspace='Mes chantiers',site_id=None).items():
         if key not in st.session_state:st.session_state[key]=value
     if st.session_state.get('workspace')=='Exemple fictif':
@@ -821,7 +821,7 @@ def main():
     pages=[('Tableau de bord','dashboard'),('Vue chantier','construction'),('Travaux et planning','calendar_month'),('Effectifs','groups'),
         ('Finances','account_balance_wallet'),('Journal','edit_note'),('Délais et probabilités','query_stats'),('Apparence','palette'),('Rapports et sauvegardes','folder_open'),('Paramètres chantier','settings')]
     with st.sidebar:
-        st.html('<div class="cp-logo">Chantier<span>Pilot</span></div><div class="cp-side-sub">TRAVAUX / ÉQUIPES / FINANCES</div>')
+        st.html('<div class="cp-logo">G.C.S<span> APP</span></div><div class="cp-side-sub">TRAVAUX / ÉQUIPES / FINANCES</div>')
         for name,icon in pages:
             if st.button(name,icon=f':material/{icon}:',width='stretch',wrap=True,type='primary' if st.session_state.page==name else 'secondary'):
                 st.session_state.page=name;st.rerun()
@@ -830,7 +830,7 @@ def main():
         if st.button('Charger les 3 chantiers fictifs',icon=':material/science:',width='stretch',wrap=True):
             st.session_state.demo=demo_data();st.session_state.pending_workspace='Exemple fictif';st.session_state.site_id=None;st.session_state.page='Tableau de bord';st.rerun()
         st.caption('v'+VERSION+' · suivi pédagogique')
-    st.html('<header class="cp-header"><div><h1>ChantierPilot</h1><p>Suivi des travaux, des équipes et des finances</p></div><small>'+str(today())+'<br>'+escape(st.session_state.workspace)+'</small></header>')
+    st.html('<header class="cp-header"><div><h1>G.C.S APP</h1><p>Suivi des travaux, des équipes et des finances</p></div><small>'+str(today())+'<br>'+escape(st.session_state.workspace)+'</small></header>')
     if st.session_state.workspace=='Mes chantiers' and st.session_state.get('displayed_revision',revision)!=revision:
         st.info('Le registre a changé dans une autre opération. Les formulaires ont été actualisés ; vérifier les valeurs avant de valider.')
     if st.session_state.get('flash'):st.success(st.session_state.pop('flash'))
@@ -854,7 +854,7 @@ def main():
         elif page=='Délais et probabilités':risk_page(p)
         else:settings_page(data,revision,p)
     except (ValueError,TypeError,KeyError) as exc:st.error(str(exc))
-    st.html('<div class="cp-foot">ChantierPilot · Quantités observées, besoins prévus et scénarios simulés distincts · Aucune validation réglementaire</div>')
+    st.html('<div class="cp-foot">G.C.S APP · Quantités observées, besoins prévus et scénarios simulés distincts · Aucune validation réglementaire</div>')
     if st.session_state.workspace=='Mes chantiers':st.session_state.displayed_revision=revision
 
 
